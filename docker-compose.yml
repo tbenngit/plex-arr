@@ -1,0 +1,631 @@
+# Welcome to my Ultimate Plex Stack!
+
+# I was hoping this could maybe help some people out when setting up their stack
+#
+# Environment Variable Examples:
+# PUID = 99
+# GUID = 101
+# TZ = America/Edmonton
+# BASE_PATH = /home/username/docker
+#
+# https://trash-guides.info/Hardlinks/Hardlinks-and-Instant-Moves/ # This can be useful for establishing how the media will be presented below
+# MEDIA_SHARE = /mnt/media   # This can also be renamed to "SHARE" or "MEDIA" this is where you will present your media
+#
+# NOTE: This is not a plug and play solution, some research / customization will be required to make this work as intented
+# Feel free to customize ie: remove/change/add containers as needed - one size does not fit all
+
+---
+
+networks: #This is used if you have a reverse proxy. I use Nginx Proxy Manager but anything will do
+  proxy: #You can remove this block if you are not planning to use a vpn
+    external: true
+    name: proxy
+  vpn_network:
+    driver: bridge
+    enable_ipv6: false
+  common_network:
+    driver: bridge
+
+services:
+  #Plex - used to display the media
+  #
+  #This can also be replaced by Emby/Jellyfin
+  plex:
+    image: lscr.io/linuxserver/plex:latest
+    container_name: plex
+      #network_mode: host
+    environment:
+      - PUID=${PUID}
+      - PGID=${GUID}
+      - TZ=${TZ}
+      - VERSION=docker
+      - PLEX_CLAIM=${PLEX_CLAIM}
+    ports:
+      - 32400:32400
+    devices:
+     - /dev/dri:/dev/dri #Required for plex HW transcoding / QuickSync
+    volumes:
+      - ${BASE_PATH}/plex/config:/config
+      - ${MEDIA_SHARE}/:/share
+      - ${MEDIA_SHARE}/media/tv:/tv
+      - ${MEDIA_SHARE}/media/movies:/movies
+      - ${MEDIA_SHARE}/media/music:/music
+      - ${MEDIA_SHARE}/media/books:/books
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.plex.rule=Host(`watch.tbtech.live`)"
+      - "traefik.http.routers.plex.entrypoints=websecure"
+      - "traefik.http.routers.plex.tls.certresolver=myresolver"
+      - "traefik.http.services.plex.loadbalancer.server.port=32400"
+      - "homepage.group=Plex Stack"
+      - "homepage.name=Plex"
+      - "homepage.icon=plex.png"
+      - "homepage.href=${PLEX_URL}"
+      - "homepage.description=Plex Media App"
+      - "homepage.widgets[0].type=tautulli"
+      - "homepage.widgets[0].url=http://10.0.0.115:8181"
+      - "homepage.widgets[0].key=${TAUT_KEY}"
+
+  #Radarr - used to find movies automatically
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${GUID}
+      - TZ=${TZ}
+    volumes:
+      - ${BASE_PATH}/radarr/config:/config
+      - ${MEDIA_SHARE}:/share #Access to the entire share
+      - ${MEDIA_SHARE}/data:/data
+    #networks: #Does not connect to overseer if you use NPM
+    #  - proxy
+    ports:
+      - 7878:7878
+    networks:
+      - common_network
+      - proxy
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.radarr.rule=Host(`radarr.homelab`)"
+      - "traefik.http.routers.radarr.entrypoints=websecure"
+      - "traefik.http.routers.radarr.tls.certresolver=myresolver"
+      - "traefik.http.services.radarr.loadbalancer.server.port=7878"
+      - "homepage.group=Plex Grabbers"
+      - "homepage.name=Radarr"
+      - "homepage.icon=radarr.png"
+      - "homepage.href=http://10.0.0.115:7878"
+      - "homepage.description=Movie Grabber"
+
+  #Sonarr - used to find tv shows automatically
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${GUID}
+      - TZ=${TZ}
+    volumes:
+      - ${BASE_PATH}/sonarr/config:/config
+      - ${MEDIA_SHARE}:/share #Access to the entire share
+      - ${MEDIA_SHARE}/data:/data
+        #networks: #Does not connect to overseer if you use NPM
+    #  - proxy
+    ports:
+      - 8989:8989
+    networks:
+      - common_network
+      - proxy
+    restart: unless-stopped
+    labels:
+      - "homepage.group=Plex Grabbers"
+      - "homepage.name=Sonarr"
+      - "homepage.icon=sonarr.png"
+      - "homepage.href=http://10.0.0.115:8989"
+      - "homepage.description=Series Grabber"
+
+  #Readarr - Used to download books
+  readarr:
+    image: lscr.io/linuxserver/readarr:develop
+    container_name: readarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${GUID}
+      - TZ=${TZ}
+    volumes:
+      - ${BASE_PATH}/readarr/config:/config
+      - ${MEDIA_SHARE}:/share
+      - ${MEDIA_SHARE}/data:/data
+    ports:
+      - 8787:8787
+    restart: unless-stopped
+    labels:
+      - "homepage.group=Plex Stack Extras"
+      - "homepage.name=Readarr"
+      - "homepage.icon=readarr.png"
+      - "homepage.href=http://10.0.0.115:8787"
+      - "homepage.description=Book Grabber"
+
+  #Lidarr - Used to download music
+  lidarr:
+    image: lscr.io/linuxserver/lidarr:latest
+    container_name: lidarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${GUID}
+      - TZ=${TZ}
+    volumes:
+      - ${BASE_PATH}/lidarr/config:/config
+      - ${MEDIA_SHARE}:/share
+      - ${MEDIA_SHARE}/data:/data
+    ports:
+      - 8686:8686
+    restart: unless-stopped
+    labels:
+      - "homepage.group=Plex Stack Extras"
+      - "homepage.name=Lidarr"
+      - "homepage.icon=lidarr.png"
+      - "homepage.href=http://10.0.0.115:8686"
+      - "homepage.description=Music Grabber"
+
+  #Prowlarr - manages your Sonarr, Radarr and download client
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${GUID}
+      - TZ=${TZ}
+    volumes:
+      - ${BASE_PATH}/prowlarr/config:/config
+    networks:
+      - proxy
+    ports:
+      - 9696:9696
+    restart: unless-stopped
+    labels:
+      - "homepage.group=Plex Grabbers"
+      - "homepage.name=Prowlarr"
+      - "homepage.icon=prowlarr.png"
+      - "homepage.href=http://10.0.0.115:9696"
+      - "homepage.description=Index Manager"
+
+  #Autobrr - used to grab torrents using the trackers IRC channel - Increases seeding due to grabbing content before RSS feed
+  autobrr:
+    container_name: autobrr
+    image: ghcr.io/autobrr/autobrr:latest
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ}
+      - PUID=${PUID}
+      - PGID=${GUID}
+    volumes:
+      - ${BASE_PATH}/autobrr/config:/config
+    ports:
+      - 7474:7474
+    labels:
+      - "homepage.group=Plex Stack Extras"
+      - "homepage.name=Autobrr"
+      - "homepage.icon=autobrr.png"
+      - "homepage.href=http://10.0.0.115:7474"
+      - "homepage.description=Modern Download Automation Tool"
+
+  #Overseer - allows users to request media on their own
+  overseerr:
+    image: lscr.io/linuxserver/overseerr:latest
+    container_name: overseerr
+    environment:
+      - PUID=${PUID}
+      - PGID=${GUID}
+      - TZ=${TZ}
+    volumes:
+      - ${BASE_PATH}/overseer/config:/config
+      - ${MEDIA_SHARE}:/share #Access to the entire share
+      - ${MEDIA_SHARE}/data:/data
+        #networks:
+    #  - proxy
+    ports:
+      - 5055:5055
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.overseerr.rule=Host(`request.tbtech.live`)"
+      - "traefik.http.routers.overseerr.entrypoints=websecure"
+      - "traefik.http.routers.overseerr.tls.certresolver=myresolver"
+      - "traefik.http.services.overseerr.loadbalancer.server.port=5055"
+      - "homepage.group=Plex Stack"
+      - "homepage.name=Overseerr"
+      - "homepage.icon=overseerr.png"
+      - "homepage.href=http://10.0.0.115:5055"
+      - "homepage.description=Requesting App"
+      - "homepage.widgets[0].type=overseerr"
+      - "homepage.widgets[0].url=http://${SERVER_IP}:5055"
+      - "homepage.widgets[0].key=${OVERSEERR_KEY}"
+
+
+  #Qbittorent - torrenting software
+  #
+  #You can also use RuTorrent, Transmisson or Deluge
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    environment:
+      - PUID=${PUID}
+      - PGID=${GUID}
+      - TZ=${TZ}
+      - WEBUI_PORT=8080
+      - TORRENTING_PORT=8694 #Make sure to port forward this port in your router so you can seed more effectively
+      - QBT_WEBUI_PASSWORD=adminadmin
+    volumes:
+      - ${BASE_PATH}/qbittorent/config:/config
+      - ${MEDIA_SHARE}:/share
+      - ${MEDIA_SHARE}/data/torrents:/data/torrents
+    #ports:
+    #  - "8080:8080"
+    #  - "8694:8694"
+    network_mode: "service:vpn"
+    depends_on:
+      - vpn
+    #networks:
+    #- vpn_network
+    restart: unless-stopped
+    labels:
+      - "homepage.group=Plex Grabbers"
+      - "homepage.name=Qbittorrent"
+      - "homepage.icon=qbittorrent.png"
+      - "homepage.href=http://10.0.0.115:8080"
+      - "homepage.description=Content Acquisition App"
+      - "homepage.widgets[0].type=qbittorrent"
+      - "homepage.widgets[0].url=http://${SERVER_IP}:8080"
+      - "homepage.widgets[0].username=${QBIT_USER}"
+      - "homepage.widgets[0].password=${QBIT_PASS}"
+
+  #Tautulli - for plex statistics. Very useful when troubleshooting performance issues
+  tautulli:
+    image: lscr.io/linuxserver/tautulli:latest
+    container_name: tautulli
+    environment:
+      - PUID=${PUID}
+      - PGID=${GUID}
+      - TZ=${TZ}
+    volumes:
+      - ${BASE_PATH}/tautulli:/config
+    networks:
+      - proxy
+    ports:
+      - 8181:8181
+    restart: unless-stopped
+    labels:
+      - "homepage.group=Plex Stack"
+      - "homepage.name=Tautulli"
+      - "homepage.icon=tautulli.png"
+      - "homepage.href=http://10.0.0.115:8181"
+      - "homepage.description=Plex Monitoring App"
+
+  #Tdarr - to transcode videos from one format to another like x265 or H.265
+  #
+  #This container requires a decent amount of horse power to run but will save space in the long run
+  tdarr:
+    container_name: tdarr
+    image: ghcr.io/haveagitgat/tdarr:latest
+    restart: unless-stopped
+    ports:
+      - 8265:8265 # webUI port
+      - 8266:8266 # server port
+    environment:
+      - TZ=${TZ}
+      - PUID=${PUID}
+      - PGID=${GUID}
+      - UMASK_SET=002
+      - nodeName=ServerNode
+      - serverIP=0.0.0.0
+      - serverPort=8266
+      - webUIPort=8265
+      - internalNode=true
+      - inContainer=true
+      - ffmpegVersion=6
+    volumes:
+      - ${BASE_PATH}/tdarr/server:/app/server
+      - ${BASE_PATH}/tdarr/configs:/app/configs
+      - ${BASE_PATH}/tdarr/logs:/app/logs
+      - ${MEDIA_SHARE}:/share
+      - ${MEDIA_SHARE}/transcode:/temp
+        #- /transcode_cache:/temp
+    devices:
+      - /dev/dri:/dev/dri #Required for HW transcoding / QuickSync
+    labels:
+      - "homepage.group=Plex Stack"
+      - "homepage.name=TDarr"
+      - "homepage.icon=tdarr.png"
+      - "homepage.href=http://10.0.0.115:8265"
+      - "homepage.description=Transcoding Layer"
+
+
+  bazarr:
+    container_name: bazarr
+    image: lscr.io/linuxserver/bazarr:latest
+    restart: unless-stopped
+    environment:
+      - PUID=${GUID}
+      - PGID=${GUID}
+      - TZ=${TZ}
+    volumes:
+      - ${BASE_PATH}/bazarr/config:/config
+      - ${MEDIA_SHARE}:/share
+      - ${MEDIA_SHARE}/data:/data
+    ports:
+      - 6767:6767
+    labels:
+      - "homepage.group=Plex Stack Extras"
+      - "homepage.name=Bazarr"
+      - "homepage.icon=bazarr.png"
+      - "homepage.href=http://10.0.0.115:6767"
+      - "homepage.description=Subtitle Manager"
+
+  #Plex Auto Languages - This switchs languages automatically example: watching english show and non english speaks you get subtitle lol
+  plexautolanguages:
+    image: remirigal/plex-auto-languages:latest
+    container_name: plex-auto-languages
+    environment:
+      - PLEX_URL=${PLEX_URL} #This is your local URl example: http://192.168.1.10:32400
+      #To find your plex token go to https://app.plex.tv/, go to your library, click on the 3 dots on the bottom right of one of your tv/movie posters
+      #Then click "View XML" in the bottom right of that popup, look at the URL of the XML window and find your X-Plex-Token= in the URL (at the very end)
+      - PLEX_TOKEN=${PLEX_TOKEN}
+      - TZ=${TZ}
+    volumes:
+      - ${BASE_PATH}/pal/config:/config
+
+  #Cross Seed - used to take torrents from one tracker and seed them on another without leeching first. Increases ratio
+  #
+  #This is fairly advanced but can be removed if you don't think you will need it. Some trackers also don't allow this
+  #cross-seed:
+  #  image: ghcr.io/cross-seed/cross-seed
+  #  container_name: cross-seed
+  #  environment:
+  #    - PUID=${PUID}
+  #    - PGID=${GUID}
+  #  ports:
+  #    - "2468:2468" # you'll need this for daemon mode only
+  #  volumes:
+  #    - ${BASE_PATH}/cross-seed/config:/config #To configure you have to manually nano the config file
+  #    - ${BASE_PATH}/qbittorent/config/qBittorrent/BT_backup:/torrents:ro # your torrent clients .torrent cache, can and should be mounted read-only (e.g. qbit: `BT_Backup` | deluge: `state` | transmission: `transmission/torrents` | rtorrent: session dir from `.rtorrent.rc`)
+  #    - ${MEDIA_SHARE}/cross-seed/current-cross-seeds:/cross-seeds # A place to temp save current cross seed .torrent files
+  #    - ${MEDIA_SHARE}/downloads:/data # OPTIONAL!!! this is dataDir path (for data-based matching) - will need to replicate your torrent client's container path (like Arr's do)
+  #  command: daemon # this enables the search mode, change to daemon to specifically run the daemon
+
+  #Plex Meta Manager - used to create collections in plex. Example: "Most Popular Movies This Week", "Best of horror", etc.
+  kometa:
+    image: kometateam/kometa
+    container_name: kometa
+    environment:
+      - TZ=${TZ}
+      #- PMM_OVERLAYS_ONLY=true #Tells PMM to run overlays only
+      - PMM_CONFIG=/config/config.yml
+      - PMM_RUN=true #Runs PMM Immediately
+      #- PMM_RUN_LIBRARIES=Movies #Tells PMM to process only a library called "Movies"
+    volumes:
+      - ${BASE_PATH}/plex-meta-manager/config:/config
+    restart: unless-stopped
+
+  #Wizarr - Allows you to create a share link that you can send to users to invite them to your media server
+  # wizarr:
+  # container_name: wizarr
+  #  image: ghcr.io/wizarrrr/wizarr:latest
+  #  ports:
+  #    - 5690:5690
+  #  volumes:
+  #    - ${BASE_PATH}/wizarr/data/database:/data/database
+  #  labels:
+  #    - "traefik.enable=true"
+  #    - "traefik.http.routers.wizarr.rule=Host(`join.tbtech.live`)"
+  #    - "traefik.http.routers.wizarr.entrypoints=websecure"
+  #    - "traefik.http.routers.wizarr.tls.certresolver=myresolver"
+  #    - "traefik.http.services.wizarr.loadbalancer.server.port=5690"
+
+  #Dozzle - Used to easily view logs of any container in real time!
+  dozzle:
+    container_name: dozzle
+    image: amir20/dozzle:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - 9999:8080
+    labels:
+      - "homepage.group=Plex Stack"
+      - "homepage.name=Dozzle"
+      - "homepage.icon=dozzle.png"
+      - "homepage.href=http://10.0.0.115:9999"
+      - "homepage.description=Docker Container Logs AIO"
+
+  #Unpacker - Used to unzip zipped files
+  unpackerr:
+    image: golift/unpackerr:latest
+    container_name: unpackerr
+
+    volumes:
+      # You need at least this one volume mapped so Unpackerr can find your files to extract.
+      # Make sure this matches your Starr apps; the folder mount (/downloads or /data) should be identical.
+      - ${MEDIA_SHARE}/data:/data
+        #- ${MEDIA_SHARE}/downloads:/downloads
+        #- ${MEDIA_SHARE}/share:/data
+      #- ${BASE_PATH}/unpackerr/config:/config
+    restart: always
+    user: 1000:1000 #Needs to run as 1000
+    # What you see below are defaults for this compose. You only need to modify things specific to your environment.
+    # Remove apps and feature configs you do not use or need.
+    # ie. Remove all lines that begin with UN_CMDHOOK, UN_WEBHOOK, UN_FOLDER, UN_WEBSERVER, and other apps you do not use.
+    environment:
+      - UN_START_DELAY=1m
+      #- UMASK=002
+      - TZ=${TZ}
+      - UN_DEBUG=true
+      # Sonarr Config
+      - UN_SONARR_0_URL=http://${SERVER_IP}:8989/
+      - UN_SONARR_0_API_KEY=${SONARR_KEY}
+        #- UN_SONA"RR_0_PATHS_0=/share/media/downloads
+      - UN_SONARR_0_TIMEOUT=30s
+      #- UN_SONARR_0_PATHS_0=/share/downloads/tv
+      # Radarr Config
+      - UN_RADARR_0_URL=http://${SERVER_IP}:7878/
+      - UN_RADARR_0_API_KEY=${RADARR_KEY}
+        #- UN_RADARR_0_PATHS_0=/share/media/downloads
+      - UN_RADARR_0_TIMEOUT=30s
+      #- UN_RADARR_0_PATHS_0=/share/downloads/movies
+      #- UN_FOLDER_0_PATH=/share/media/downloads
+    networks:
+      - common_network
+
+  # Used to sync Trash Guides config's to radarr and sonarr
+  # Only accessible via command line! No GUI
+  #recyclarr:
+  #  image: ghcr.io/recyclarr/recyclarr
+  #  container_name: recyclarr
+  #  user: ${PUID}:${GUID}
+  #  volumes:
+  #    - ${BASE_PATH}/recyclarr/config:/config
+  #  environment:
+  #    - TZ=${TZ}
+
+  # Usenet download client
+  # used for downloading files over usenet
+  #nzbget:
+  #  image: lscr.io/linuxserver/nzbget:latest
+  #  container_name: nzbget
+  #  environment:
+  #    - PUID=1000
+  #    - PGID=1000
+  #    - TZ=America/Edmonton
+  #    - NZBGET_USER=${NZBGET_U} #optional
+  #    - NZBGET_PASS=${NZBGET_P} #optional
+  #  volumes:
+  #    - ${BASE_PATH}/nzbget/config:/config
+  #      #- ${MEDIA_SHARE}/media/nzb_downloads:/downloads #optional
+  #    - ${MEDIA_SHARE}/data/usenet:/downloads
+  #  ports:
+  #    - 8789:6789
+  #  depends_on:
+  #    - vpn
+  #  networks:
+  #    - vpn_network
+  #  restart: unless-stopped
+
+
+  # Traefik reverse proxy to enable access to the internal services with SSL support
+  #
+  traefik:
+    image: traefik:latest
+    container_name: traefik
+    restart: unless-stopped
+    command:
+      - "--api.insecure=true"  # Optional: Enable Traefik dashboard on port 8080
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:80"  # HTTP entrypoint
+      - "--entrypoints.websecure.address=:443"  # HTTPS entrypoint (for SSL)
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure" # This line redirects HTTP to HTTPS
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https" # Ensures the redirection uses HTTPS
+      - "--certificatesresolvers.myresolver.acme.tlschallenge=true" # SSL cert resolver
+      - "--certificatesresolvers.myresolver.acme.email=tbenplex@gmail.com" # info required for certs
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json" # info required for certs
+    ports:
+      - "80:80"  # Exposing port 80 for HTTP
+      - "443:443"  # Exposing port 443 for HTTPS (if you use SSL)
+      - "8123:8080"  # Traefik dashboard (optional)
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"  # Traefik will watch the Docker socket for services
+      - "${BASE_PATH}/traefik/letsencrypt:/letsencrypt" # location for SSL certs
+
+
+
+  # This container is for the VPN service so that qBittorrent can run behind a VPN
+  #
+  vpn:
+    image: haugene/transmission-openvpn:latest
+    container_name: qbittorrent-vpn
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    devices:
+      - /dev/net/tun
+    environment:
+      - OPENVPN_PROVIDER=WINDSCRIBE
+      - OPENVPN_CONFIG=Windscribe-StaticIP2 # Replace with the desired VPN server config
+      - OPENVPN_USERNAME=${WINDSCRIBE_U2}
+      - OPENVPN_PASSWORD=${WINDSCRIBE_P2}
+      - WEBPROXY_ENABLED=false
+      - LOCAL_NETWORK=10.0.0.0/24 # Adjust this based on your LAN configuration
+    sysctls:
+      - "net.ipv6.conf.all.disable_ipv6=0"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${BASE_PATH}/config:/config
+    ports:
+      - "8080:8080" # qBittorrent WEBUI
+      - "8694:8694" # Port for torrent traffic
+      - "6799:6789" # NZBGET WEBUI
+    restart: unless-stopped
+    networks:
+      vpn_network: {}
+      proxy:
+        aliases:
+          - proxy
+          - qbittorrent
+    labels:
+      - "homepage.group=Plex Stack"
+      - "homepage.name=VPN"
+      - "homepage.icon=openvpn.png"
+      - "homepage.description=VPN For Content Acquisition"
+
+  # Maintainerr is for gathering up the files that meet certain criteria so that it can be 
+  # deleted to clear up more space.
+  #
+  maintainerr:
+    image: ghcr.io/jorenn92/maintainerr:latest # or jorenn92/maintainerr:latest
+    container_name: maintainerr
+    user: 1000:1000
+    volumes:
+      - type: bind
+        source: ${BASE_PATH}/maintainerr/data
+        target: /opt/data
+    environment:
+      - TZ=America/Edmonton
+#      - DEBUG=true # uncomment to enable debug logs
+#      - BASE_PATH=/maintainerr # uncomment if you're serving maintainerr from a subdirectory
+#      - UI_HOSTNAME=:: # uncomment if you want to listen on IPv6 instead (default 0.0.0.0)
+#      - UI_PORT=6247 # uncomment to change the UI port (default 6246). Useful if you're on a network where the port is already in use
+#      - API_PORT=3002 # uncomment to change the API port (default 3001). Useful if you're on a network where the port is already in use
+    ports:
+      - 6246:6246
+    restart: unless-stopped
+  
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    environment:
+      HOMEPAGE_ALLOWED_HOSTS: 10.0.0.115:3000 # required, may need port. See gethomepage.dev/installation/#homepage_allowed_hosts
+      PUID: ${PUID} # optional, your user id
+      PGID: ${GUID} # optional, your group id
+    ports:
+      - 3000:3000
+    volumes:
+      - ${BASE_PATH}/homepage:/app/config
+        # - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+
+
+  dockerproxy:
+    image: ghcr.io/tecnativa/docker-socket-proxy:latest
+    container_name: dockerproxy
+    environment:
+      - CONTAINERS=1 # Allow access to viewing containers
+      - SERVICES=1 # Allow access to viewing services (necessary when using Docker Swarm)
+      - TASKS=1 # Allow access to viewing tasks (necessary when using Docker Swarm)
+      - POST=0 # Disallow any POST operations (effectively read-only)
+    ports:
+      - 127.0.0.1:2375:2375
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro # Mounted as read-only
+    restart: unless-stopped
+
+
